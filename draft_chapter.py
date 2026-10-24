@@ -18,31 +18,27 @@ API_BASE = os.environ.get("AUTONOVEL_API_BASE_URL", "https://api.anthropic.com")
 CHAPTERS_DIR = BASE_DIR / "chapters"
 
 def call_writer(prompt, max_tokens=16000):
-    import httpx
-    headers = {
-        "x-api-key": API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": "context-1m-2025-08-07",
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
-        "temperature": 0.8,
-        "system": (
-            "You are a literary fiction writer drafting a fantasy novel chapter. "
-            "You write in third-person limited past tense, locked to one POV character. "
-            "You follow the voice definition exactly. You hit every beat in the outline. "
-            "You never use words from the banned list. You show, never tell emotions. "
-            "Your prose is specific, sensory, grounded. Metaphors come from the character's "
-            "experience. You vary sentence length. You trust the reader. "
-            "You write the FULL chapter -- do not truncate, summarize, or skip ahead."
-        ),
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    resp = httpx.post(f"{API_BASE}/v1/messages", headers=headers, json=payload, timeout=600)
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    from llm_client import call_llm
+    # Cap for local / smoke via env (keeps 32GB Mac from locking up)
+    cap = int(os.environ.get("AUTONOVEL_MAX_TOKENS", "0") or "0")
+    if cap > 0:
+        max_tokens = min(max_tokens, cap)
+    system = (
+        "You are a literary fiction writer drafting a fantasy novel chapter. "
+        "You write in third-person limited past tense, locked to one POV character. "
+        "You follow the voice definition exactly. You hit every beat in the outline. "
+        "You never use words from the banned list. You show, never tell emotions. "
+        "Your prose is specific, sensory, grounded. Metaphors come from the character's "
+        "experience. You vary sentence length. You trust the reader. "
+        "You write the FULL chapter -- do not truncate, summarize, or skip ahead."
+    )
+    return call_llm(
+        prompt,
+        model=WRITER_MODEL,
+        system=system,
+        max_tokens=max_tokens,
+        temperature=0.8,
+    )
 
 def load_file(path):
     try:
@@ -86,7 +82,8 @@ def main():
     else:
         prev_tail = "(first chapter -- no previous)"
     
-    prompt = f"""Write Chapter {chapter_num} of "The Second Son of the House of Bells."
+    title = os.environ.get("AUTONOVEL_TITLE", "The Second Son of the House of Bells")
+    prompt = f"""Write Chapter {chapter_num} of "{title}."
 
 VOICE DEFINITION (follow this exactly):
 {voice}

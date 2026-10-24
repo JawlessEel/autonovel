@@ -25,35 +25,26 @@ ANTHROPIC_BETA = "context-1m-2025-08-07"
 
 
 def call_writer(prompt, max_tokens=4000):
-    import httpx
-    headers = {
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-        "anthropic-beta": ANTHROPIC_BETA,
-        "content-type": "application/json",
-    }
-    payload = {
-        "model": WRITER_MODEL,
-        "max_tokens": max_tokens,
-        "temperature": 1.0,  # high temp for creative diversity
-        "system": (
-            "You are a fantasy novelist with deep knowledge of the genre's "
-            "best works -- Tolkien, Le Guin, Rothfuss, Wolfe, Jemisin, Peake, "
-            "Susanna Clarke, Andrew Peterson, Sofia Samatar. You generate "
-            "novel concepts that are SPECIFIC, SURPRISING, and STRUCTURALLY "
-            "SOUND. You never propose generic medieval Europe + elves. Each "
-            "concept should make a reader think 'I've never seen THAT before.'"
-        ),
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    resp = httpx.post(
-        f"{API_BASE_URL}/v1/messages",
-        headers=headers,
-        json=payload,
-        timeout=120,
+    from llm_client import call_llm
+    # Local smoke: allow empty/placeholder key when using OpenAI-compat
+    if not ANTHROPIC_API_KEY and os.environ.get("AUTONOVEL_API_COMPAT", "").lower() != "openai":
+        # keep old hard fail only for anthropic path; openai uses lm-studio placeholder
+        pass
+    system = (
+        "You are a fantasy novelist with deep knowledge of the genre's "
+        "best works -- Tolkien, Le Guin, Rothfuss, Wolfe, Jemisin, Peake, "
+        "Susanna Clarke, Andrew Peterson, Sofia Samatar. You generate "
+        "novel concepts that are SPECIFIC, SURPRISING, and STRUCTURALLY "
+        "SOUND. You never propose generic medieval Europe + elves. Each "
+        "concept should make a reader think 'I've never seen THAT before.'"
     )
-    resp.raise_for_status()
-    return resp.json()["content"][0]["text"]
+    return call_llm(
+        prompt,
+        model=WRITER_MODEL,
+        system=system,
+        max_tokens=max_tokens,
+        temperature=1.0,
+    )
 
 
 GENERATE_PROMPT = """Generate {count} fantasy novel seed concepts. Each should be
@@ -123,8 +114,8 @@ def main():
                         help="Riff on an existing idea")
     args = parser.parse_args()
 
-    if not ANTHROPIC_API_KEY:
-        print("ERROR: Set ANTHROPIC_API_KEY in .env first")
+    if not ANTHROPIC_API_KEY and os.environ.get("AUTONOVEL_API_COMPAT", "").lower() != "openai":
+        print("ERROR: Set ANTHROPIC_API_KEY in .env first (or AUTONOVEL_API_COMPAT=openai for LM Studio)")
         sys.exit(1)
 
     if args.riff:
